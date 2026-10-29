@@ -1,0 +1,1916 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aravali Lifeline AI | Smart Medical & Indoor Hospital Navigation</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet.js CSS & JS (OpenStreetMap - No API Key Needed, GitHub Pages Ready) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    
+    <!-- Google Fonts: Inter & Space Grotesk -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Space Grotesk', 'sans-serif'],
+                    },
+                    colors: {
+                        aravali: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            400: '#34d399',
+                            500: '#10b981',
+                            600: '#059669',
+                            900: '#064e3b',
+                        },
+                        medblue: {
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #0b1120;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #10b981;
+        }
+
+        /* Leaflet Dark/Medical Custom Styling */
+        #outdoor-map {
+            height: 100%;
+            width: 100%;
+            min-height: 480px;
+            z-index: 10;
+            border-radius: 1rem;
+            background-color: #0f172a;
+        }
+        .offline-grid-bg {
+            background-color: #0b1120 !important;
+            background-image: 
+                linear-gradient(to right, rgba(56, 189, 248, 0.12) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(56, 189, 248, 0.12) 1px, transparent 1px);
+            background-size: 36px 36px;
+        }
+        .leaflet-popup-content-wrapper {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            border-radius: 12px !important;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6) !important;
+        }
+        .leaflet-popup-tip {
+            background: #1e293b !important;
+        }
+
+        /* Pulsing User GPS Marker */
+        .gps-pulse {
+            width: 22px;
+            height: 22px;
+            background: #0ea5e9;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.9);
+        }
+        .gps-pulse::after {
+            content: '';
+            position: absolute;
+            top: -12px;
+            left: -12px;
+            right: -12px;
+            bottom: -12px;
+            border: 3px solid #0ea5e9;
+            border-radius: 50%;
+            animation: ripple 1.8s infinite ease-out;
+        }
+        @keyframes ripple {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(1.9); opacity: 0; }
+        }
+
+        /* 2D Indoor Map Animated Path */
+        .nav-path-line {
+            stroke-dasharray: 12, 8;
+            animation: dashMove 1s linear infinite;
+            filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.9));
+        }
+        @keyframes dashMove {
+            to {
+                stroke-dashoffset: -20;
+            }
+        }
+
+        /* Indoor Room Hover & Active States */
+        .hospital-room {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+        .hospital-room:hover {
+            filter: brightness(1.25);
+            stroke-width: 3px;
+        }
+        .room-selected-start {
+            stroke: #38bdf8 !important;
+            stroke-width: 4px !important;
+            filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.6));
+        }
+        .room-selected-end {
+            stroke: #10b981 !important;
+            stroke-width: 4px !important;
+            filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.75));
+        }
+
+        /* AR Scanner Laser Animation */
+        .ar-laser {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #10b981, #38bdf8, #10b981, transparent);
+            box-shadow: 0 0 18px 4px rgba(16, 185, 129, 0.85);
+            animation: scanLaser 2.6s ease-in-out infinite;
+        }
+        @keyframes scanLaser {
+            0%, 100% { top: 8%; }
+            50% { top: 92%; }
+        }
+
+        /* Floating AR 3D Arrow */
+        .ar-float {
+            animation: floatUp 2.2s ease-in-out infinite;
+        }
+        @keyframes floatUp {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
+
+    <!-- ================= TOP NAVIGATION BAR ================= -->
+    <header class="sticky top-0 z-50 backdrop-blur-xl bg-slate-900/85 border-b border-slate-800/80 px-4 lg:px-8 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            
+            <!-- Brand Logo -->
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-sky-600 flex items-center justify-center shadow-lg shadow-emerald-500/25 border border-emerald-400/30">
+                    <i class="fa-solid fa-heart-pulse text-white text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-display font-bold text-lg md:text-xl tracking-tight text-white">
+                            ARAVALI <span class="text-emerald-400">LIFELINE AI</span>
+                        </h1>
+                        <span class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> LIVE HUB
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400">Smart Pharmacy Locator • 2D Indoor Hospital Map • AR Navigation</p>
+                </div>
+            </div>
+
+            <!-- Mode Switcher Tabs -->
+            <nav class="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/70 order-3 lg:order-2 w-full lg:w-auto justify-center">
+                <button onclick="switchTab('outdoor')" id="tab-outdoor" class="flex-1 lg:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-emerald-600 text-white shadow-md shadow-emerald-600/30">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                    <span>Live Pharmacy Map</span>
+                </button>
+                <button onclick="switchTab('indoor')" id="tab-indoor" class="flex-1 lg:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-hospital-user"></i>
+                    <span>2D Indoor Hospital Map</span>
+                </button>
+                <button onclick="switchTab('ar')" id="tab-ar" class="flex-1 lg:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-vr-cardboard text-sky-400"></i>
+                    <span>AR Nav Scanner</span>
+                </button>
+            </nav>
+
+            <!-- Quick Action Buttons -->
+            <div class="flex items-center gap-2.5 order-2 lg:order-3">
+                <button onclick="switchTab('ar')" class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-emerald-500 hover:from-sky-400 hover:to-emerald-400 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-sky-500/20 transition transform active:scale-95">
+                    <i class="fa-solid fa-qrcode"></i>
+                    <span>AR Nav</span>
+                </button>
+                <button onclick="toggleHelpModal()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="GitHub Pages & Custom Image Guide">
+                    <i class="fa-solid fa-circle-question text-base"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ================= MAIN CONTENT CONTAINER ================= -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6">
+
+        <!-- ======================================================================= -->
+        <!-- SECTION 1: OUTDOOR LIVE MAP & MEDICINE FINDER                           -->
+        <!-- ======================================================================= -->
+        <section id="section-outdoor" class="space-y-6">
+            
+            <!-- Top Search & Live GPS Control Bar -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+                    
+                    <!-- Search Input -->
+                    <div class="lg:col-span-7">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-1.5">
+                            <i class="fa-solid fa-pills mr-1"></i> Search Medicine Availability Nearby
+                        </label>
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                <input 
+                                    type="text" 
+                                    id="medicine-search-input" 
+                                    placeholder="Type medicine name (e.g., Paracetamol, Insulin, Dolo 650, ORS)..." 
+                                    class="w-full pl-10 pr-9 py-2.5 bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition"
+                                    onkeydown="if(event.key === 'Enter') searchMedicine()"
+                                >
+                                <button onclick="clearMedicineSearch()" id="clear-search-btn" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                            <button onclick="searchMedicine()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-600/25 transition flex items-center gap-2 shrink-0">
+                                <i class="fa-solid fa-magnifying-glass-location"></i>
+                                <span>Search Medicine</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Live GPS Status & Locate Button -->
+                    <div class="lg:col-span-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-2 lg:pt-5">
+                        <div class="flex items-center gap-2.5 bg-slate-950/90 border border-slate-800 px-3.5 py-2 rounded-xl flex-1">
+                            <span class="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping shrink-0"></span>
+                            <div class="truncate">
+                                <div class="text-[11px] text-slate-400 uppercase font-medium">Current Live Coordinates</div>
+                                <div id="gps-status-text" class="text-xs font-mono text-sky-400 truncate">28.4595° N, 77.0266° E (Aravali Hub)</div>
+                            </div>
+                        </div>
+                        <button onclick="locateUserGPS()" class="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-lg shadow-sky-600/25 transition flex items-center justify-center gap-2 shrink-0">
+                            <i class="fa-solid fa-location-crosshairs"></i>
+                            <span>Detect Live GPS</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Medicine Filter Pills -->
+                <div class="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
+                    <span class="text-xs text-slate-400 mr-1"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i>Quick Search:</span>
+                    <button onclick="quickPillSearch('Paracetamol')" class="px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 transition">
+                        Paracetamol
+                    </button>
+                    <button onclick="quickPillSearch('ORS')" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 hover:bg-emerald-600/30 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition">
+                        ORS
+                    </button>
+                    <button onclick="quickPillSearch('Amoxicillin')" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 hover:bg-emerald-600/30 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition">
+                        Amoxicillin
+                    </button>
+                    <button onclick="quickPillSearch('Insulin')" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 hover:bg-emerald-600/30 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition">
+                        Insulin
+                    </button>
+                    <button onclick="quickPillSearch('Cetirizine')" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 hover:bg-emerald-600/30 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition">
+                        Cetirizine
+                    </button>
+                    <button onclick="quickPillSearch('Metformin')" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-800 hover:bg-emerald-600/30 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition">
+                        Metformin
+                    </button>
+                    <button onclick="clearMedicineSearch()" class="ml-auto px-3 py-1 rounded-full text-xs font-medium bg-slate-800/60 hover:bg-slate-700 text-slate-300 transition">
+                        Show All Stores (7)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Map + Shortlisted Pharmacy Sidebar Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Left Sidebar: Shortlisted Medical Stores -->
+                <div class="lg:col-span-5 flex flex-col bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl max-h-[600px]">
+                    <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
+                        <div>
+                            <h2 class="font-display font-bold text-base text-white flex items-center gap-2">
+                                <i class="fa-solid fa-prescription-bottle-medical text-emerald-400"></i>
+                                <span id="store-list-title">Nearby Medical Stores</span>
+                            </h2>
+                            <p id="store-filter-subtitle" class="text-xs text-slate-400 mt-0.5">Showing all verified 24x7 pharmacies near your location</p>
+                        </div>
+                        <span id="store-count-badge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            7 Stores
+                        </span>
+                    </div>
+
+                    <!-- Dynamic Store Cards Container -->
+                    <div id="pharmacy-list-container" class="flex-1 overflow-y-auto p-3 space-y-3">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+
+                <!-- Right Map Area: Leaflet Live Map -->
+                <div class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-2 shadow-xl relative min-h-[520px] flex flex-col">
+                    
+                    <!-- Map Tile Style Switcher Pill Bar (Top Right Overlay) -->
+                    <div class="absolute top-5 right-5 z-[400] bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-1.5 shadow-xl flex flex-wrap items-center gap-1">
+                        <button onclick="setMapTileStyle('osm_hot')" id="tile-btn-osm_hot" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 text-white transition" title="Free OpenStreetMap Humanitarian Medical Style">
+                            OSM Humanitarian
+                        </button>
+                        <button onclick="setMapTileStyle('osm_de')" id="tile-btn-osm_de" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition" title="Free OpenStreetMap Community Mirror">
+                            OSM Classic
+                        </button>
+                        <button onclick="setMapTileStyle('osm_fr')" id="tile-btn-osm_fr" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition" title="Free OpenStreetMap France Server">
+                            OSM Detailed
+                        </button>
+                        <button onclick="setMapTileStyle('osm_std')" id="tile-btn-osm_std" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition" title="Standard tile.openstreetmap.org (Best for GitHub Pages)">
+                            OSM Standard
+                        </button>
+                    </div>
+
+                    <div id="outdoor-map" class="flex-1"></div>
+                    
+                    <!-- Floating Map Legend Overlay -->
+                    <div class="absolute bottom-5 left-5 z-[400] bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3 shadow-xl text-xs space-y-1.5">
+                        <div class="font-semibold text-white mb-1">Map Legend</div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-sky-500 inline-block border border-white"></span>
+                            <span class="text-slate-300">Your Live Location</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block border border-white"></span>
+                            <span class="text-slate-300">Medicine In Stock (Shortlisted)</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-rose-500 inline-block border border-white"></span>
+                            <span class="text-slate-300">Aravali Main Hospital (2D Indoor Map)</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ======================================================================= -->
+        <!-- SECTION 2: 2D INDOOR HOSPITAL MAP & SHORTEST PATH NAVIGATION            -->
+        <!-- ======================================================================= -->
+        <section id="section-indoor" class="hidden space-y-6">
+            
+            <!-- Top Indoor Navigation Controls -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+                <div class="flex flex-wrap items-center justify-between gap-4 pb-4 mb-4 border-b border-slate-800">
+                    <div>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                            <i class="fa-solid fa-route mr-1"></i> Aravali Super-Specialty Hospital • Ground & 1st Wing Floorplan
+                        </span>
+                        <h2 class="font-display font-bold text-xl text-white mt-0.5">2D Interactive Indoor Hospital Navigation</h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="switchTab('ar')" class="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-emerald-500 hover:from-sky-400 hover:to-emerald-400 text-white font-semibold text-xs sm:text-sm shadow-lg flex items-center gap-2">
+                            <i class="fa-solid fa-camera-viewfinder"></i>
+                            <span>Launch AR Marker Nav</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Start / End Location Selectors & Route Button -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                    
+                    <!-- Start Location -->
+                    <div class="md:col-span-4">
+                        <label class="block text-xs font-medium text-sky-400 mb-1.5">
+                            <i class="fa-solid fa-circle-dot mr-1"></i> Start Location (Point A)
+                        </label>
+                        <select id="indoor-start-select" onchange="calculateIndoorRoute()" class="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none">
+                            <option value="main_door" selected>Main Entrance / Main Door</option>
+                            <option value="reception">Reception & Helpdesk</option>
+                            <option value="emergency">Emergency & Trauma Ward</option>
+                            <option value="opd">OPD Consultation Clinic</option>
+                            <option value="pharmacy">Hospital Indoor Pharmacy</option>
+                            <option value="cafeteria">Hospital Cafeteria & Lounge</option>
+                            <option value="lab">Diagnostic & X-Ray Lab</option>
+                            <option value="elevator">Central Elevators & Stairs</option>
+                            <option value="icu">ICU Critical Care Unit</option>
+                            <option value="ward_10">Ward Number 10 (General)</option>
+                            <option value="ward_12">Ward Number 12 (Pediatrics)</option>
+                            <option value="ward_13">Ward Number 13 (Cardiology Special)</option>
+                        </select>
+                    </div>
+
+                    <!-- Swap Button -->
+                    <div class="md:col-span-1 flex justify-center">
+                        <button onclick="swapIndoorLocations()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition" title="Swap Start and Destination">
+                            <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                        </button>
+                    </div>
+
+                    <!-- End Destination -->
+                    <div class="md:col-span-4">
+                        <label class="block text-xs font-medium text-emerald-400 mb-1.5">
+                            <i class="fa-solid fa-location-dot mr-1"></i> Destination Room (Point B)
+                        </label>
+                        <select id="indoor-end-select" onchange="calculateIndoorRoute()" class="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none">
+                            <option value="main_door">Main Entrance / Main Door</option>
+                            <option value="reception">Reception & Helpdesk</option>
+                            <option value="emergency">Emergency & Trauma Ward</option>
+                            <option value="opd">OPD Consultation Clinic</option>
+                            <option value="pharmacy">Hospital Indoor Pharmacy</option>
+                            <option value="cafeteria">Hospital Cafeteria & Lounge</option>
+                            <option value="lab">Diagnostic & X-Ray Lab</option>
+                            <option value="elevator">Central Elevators & Stairs</option>
+                            <option value="icu">ICU Critical Care Unit</option>
+                            <option value="ward_10">Ward Number 10 (General)</option>
+                            <option value="ward_12">Ward Number 12 (Pediatrics)</option>
+                            <option value="ward_13" selected>Ward Number 13 (Cardiology Special)</option>
+                        </select>
+                    </div>
+
+                    <!-- Quick Preset Buttons -->
+                    <div class="md:col-span-3 flex gap-2">
+                        <button onclick="calculateIndoorRoute()" class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-600/25 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-diamond-turn-right"></i>
+                            <span>Show Short Route</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Fast Route Presets -->
+                <div class="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
+                    <span class="text-slate-400">Popular Routes:</span>
+                    <button onclick="setQuickIndoorRoute('main_door', 'ward_13')" class="px-3 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition">
+                        Main Door → Ward No. 13
+                    </button>
+                    <button onclick="setQuickIndoorRoute('main_door', 'cafeteria')" class="px-3 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+                        Main Door → Cafeteria
+                    </button>
+                    <button onclick="setQuickIndoorRoute('ward_13', 'pharmacy')" class="px-3 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+                        Ward No. 13 → Indoor Pharmacy
+                    </button>
+                    <button onclick="setQuickIndoorRoute('reception', 'lab')" class="px-3 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+                        Reception → X-Ray & Lab
+                    </button>
+                    <span class="ml-auto text-slate-400 hidden sm:inline">
+                        <i class="fa-solid fa-hand-pointer text-sky-400 mr-1"></i> Tip: Click any room directly on the map to set it as Destination!
+                    </span>
+                </div>
+            </div>
+
+            <!-- 2D Floorplan SVG & Turn-by-Turn Directions Sidebar -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Interactive 2D SVG Hospital Floorplan -->
+                <div class="lg:col-span-8 bg-slate-900/95 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between relative overflow-hidden">
+                    
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div class="flex flex-wrap items-center gap-3 text-xs">
+                            <span class="flex items-center gap-1.5 text-sky-400 font-medium">
+                                <span class="w-3 h-3 rounded-full bg-sky-400 inline-block"></span> Start (A)
+                            </span>
+                            <span class="flex items-center gap-1.5 text-emerald-400 font-medium">
+                                <span class="w-3 h-3 rounded-full bg-emerald-400 inline-block"></span> Destination (B)
+                            </span>
+                            <span class="flex items-center gap-1.5 text-amber-400 font-medium">
+                                <i class="fa-solid fa-qrcode"></i> AR Wall Markers
+                            </span>
+                        </div>
+                        <!-- Zoom Controls for Free 2D Exploration -->
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="zoomIndoorMap(0.15)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700" title="Zoom In">
+                                <i class="fa-solid fa-magnifying-glass-plus"></i>
+                            </button>
+                            <button onclick="zoomIndoorMap(-0.15)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700" title="Zoom Out">
+                                <i class="fa-solid fa-magnifying-glass-minus"></i>
+                            </button>
+                            <button onclick="resetIndoorZoom()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700">
+                                Reset View
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Responsive SVG Floorplan Canvas -->
+                    <div id="indoor-map-viewport" class="w-full overflow-auto bg-slate-950 rounded-xl border border-slate-800/90 p-2 max-h-[520px]">
+                        <svg id="hospital-floorplan-svg" viewBox="0 0 900 560" class="w-full h-auto min-w-[680px] select-none transition-transform duration-200 origin-top-left">
+                            <defs>
+                                <!-- Architectural Blueprint Grid Pattern -->
+                                <pattern id="blueprint-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+                                    <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#1e293b" stroke-width="1"/>
+                                </pattern>
+                                <!-- Glow Filter -->
+                                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                                    <feGaussianBlur stdDeviation="4" result="blur" />
+                                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                </filter>
+                            </defs>
+
+                            <!-- Background Grid -->
+                            <rect width="900" height="560" fill="#090d16" />
+                            <rect width="900" height="560" fill="url(#blueprint-grid)" />
+
+                            <!-- Outer Hospital Building Walls -->
+                            <rect x="30" y="25" width="840" height="510" rx="16" fill="#0f172a" stroke="#334155" stroke-width="4"/>
+
+                            <!-- Corridors / Hallways Background -->
+                            <!-- Horizontal Main Corridor (Y=245 to 315) -->
+                            <rect x="40" y="245" width="820" height="70" fill="#1e293b" />
+                            <!-- Vertical West Corridor (X=245 to 310) -->
+                            <rect x="245" y="35" width="65" height="490" fill="#1e293b" />
+                            <!-- Vertical East Corridor (X=595 to 660) -->
+                            <rect x="595" y="35" width="65" height="490" fill="#1e293b" />
+
+                            <!-- Corridor Center Guide Lines (Subtle) -->
+                            <line x1="80" y1="280" x2="820" y2="280" stroke="#334155" stroke-dasharray="6,6" stroke-width="1.5"/>
+                            <line x1="277" y1="90" x2="277" y2="470" stroke="#334155" stroke-dasharray="6,6" stroke-width="1.5"/>
+                            <line x1="627" y1="90" x2="627" y2="470" stroke="#334155" stroke-dasharray="6,6" stroke-width="1.5"/>
+
+                            <!-- Corridor Labels -->
+                            <text x="450" y="275" fill="#475569" font-size="11" font-weight="600" text-anchor="middle" letter-spacing="3">CENTRAL LIFELINE CORRIDOR</text>
+
+                            <!-- ==================== HOSPITAL ROOMS & WARDS ==================== -->
+
+                            <!-- 1. Emergency & Trauma Center (Top Left) -->
+                            <g id="room-emergency" class="hospital-room" onclick="selectRoomOnMap('emergency')">
+                                <rect x="45" y="40" width="190" height="195" rx="10" fill="#31102f" stroke="#f43f5e" stroke-width="2"/>
+                                <text x="140" y="115" fill="#fda4af" font-size="14" font-weight="700" text-anchor="middle">EMERGENCY &amp; TRAUMA</text>
+                                <text x="140" y="135" fill="#fb7185" font-size="11" text-anchor="middle">24x7 Critical Care • Room E1</text>
+                                <circle cx="140" cy="80" r="16" fill="#e11d48" fill-opacity="0.3" stroke="#f43f5e"/>
+                                <text x="140" y="85" fill="#fff" font-size="14" font-weight="bold" text-anchor="middle">+</text>
+                            </g>
+
+                            <!-- 2. Diagnostic Lab & X-Ray (Top Center-Left) -->
+                            <g id="room-lab" class="hospital-room" onclick="selectRoomOnMap('lab')">
+                                <rect x="320" y="40" width="165" height="195" rx="10" fill="#172554" stroke="#3b82f6" stroke-width="2"/>
+                                <text x="402" y="115" fill="#93c5fd" font-size="12" font-weight="700" text-anchor="middle">DIAGNOSTIC &amp; X-RAY</text>
+                                <text x="402" y="133" fill="#60a5fa" font-size="10" text-anchor="middle">MRI • CT Scan • Blood Lab</text>
+                                <text x="402" y="85" fill="#60a5fa" font-size="18" text-anchor="middle">🔬</text>
+                            </g>
+
+                            <!-- 2B. ICU & Elevators/Stairs (Top Center-Right) -->
+                            <g id="room-icu" class="hospital-room" onclick="selectRoomOnMap('icu')">
+                                <rect x="495" y="40" width="90" height="115" rx="8" fill="#3b0764" stroke="#c084fc" stroke-width="2"/>
+                                <text x="540" y="92" fill="#e9d5ff" font-size="12" font-weight="700" text-anchor="middle">ICU UNIT</text>
+                                <text x="540" y="108" fill="#c084fc" font-size="9" text-anchor="middle">Intensive Care</text>
+                            </g>
+
+                            <g id="room-elevator" class="hospital-room" onclick="selectRoomOnMap('elevator')">
+                                <rect x="495" y="163" width="90" height="72" rx="8" fill="#1e293b" stroke="#94a3b8" stroke-width="2"/>
+                                <text x="540" y="196" fill="#f1f5f9" font-size="11" font-weight="700" text-anchor="middle">🛗 ELEVATOR</text>
+                                <text x="540" y="212" fill="#cbd5e1" font-size="9" text-anchor="middle">&amp; Main Stairs</text>
+                            </g>
+
+                            <!-- 3. Ward Number 10 - General Ward (Top Right-Top) -->
+                            <g id="room-ward_10" class="hospital-room" onclick="selectRoomOnMap('ward_10')">
+                                <rect x="670" y="40" width="185" height="92" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+                                <text x="762" y="82" fill="#a7f3d0" font-size="13" font-weight="700" text-anchor="middle">WARD NO. 10</text>
+                                <text x="762" y="100" fill="#34d399" font-size="10" text-anchor="middle">General Recovery Ward</text>
+                            </g>
+
+                            <!-- 4. Ward Number 12 - Pediatrics (Top Right-Bottom) -->
+                            <g id="room-ward_12" class="hospital-room" onclick="selectRoomOnMap('ward_12')">
+                                <rect x="670" y="143" width="185" height="92" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+                                <text x="762" y="185" fill="#a7f3d0" font-size="13" font-weight="700" text-anchor="middle">WARD NO. 12</text>
+                                <text x="762" y="203" fill="#34d399" font-size="10" text-anchor="middle">Pediatrics &amp; Neonatal</text>
+                            </g>
+
+                            <!-- 5. OPD Consultation Wing (Bottom Left) -->
+                            <g id="room-opd" class="hospital-room" onclick="selectRoomOnMap('opd')">
+                                <rect x="45" y="325" width="190" height="195" rx="10" fill="#1e1b4b" stroke="#818cf8" stroke-width="2"/>
+                                <text x="140" y="410" fill="#c7d2fe" font-size="14" font-weight="700" text-anchor="middle">OPD CONSULTATION</text>
+                                <text x="140" y="430" fill="#818cf8" font-size="11" text-anchor="middle">Rooms 101 - 108 • Doctors</text>
+                                <text x="140" y="380" fill="#818cf8" font-size="18" text-anchor="middle">🩺</text>
+                            </g>
+
+                            <!-- 6. Reception & Billing (Bottom Center-Left) -->
+                            <g id="room-reception" class="hospital-room" onclick="selectRoomOnMap('reception')">
+                                <rect x="320" y="325" width="128" height="125" rx="8" fill="#0f2942" stroke="#38bdf8" stroke-width="2"/>
+                                <text x="384" y="382" fill="#bae6fd" font-size="12" font-weight="700" text-anchor="middle">RECEPTION</text>
+                                <text x="384" y="400" fill="#38bdf8" font-size="10" text-anchor="middle">Helpdesk &amp; Billing</text>
+                            </g>
+
+                            <!-- 7. Indoor Pharmacy (Bottom Center-Right) -->
+                            <g id="room-pharmacy" class="hospital-room" onclick="selectRoomOnMap('pharmacy')">
+                                <rect x="457" y="325" width="128" height="125" rx="8" fill="#14332a" stroke="#34d399" stroke-width="2"/>
+                                <text x="521" y="382" fill="#a7f3d0" font-size="12" font-weight="700" text-anchor="middle">INDOOR PHARMACY</text>
+                                <text x="521" y="400" fill="#34d399" font-size="10" text-anchor="middle">24x7 Hospital Meds</text>
+                            </g>
+
+                            <!-- 8. MAIN DOOR / MAIN ENTRANCE (Bottom Center Gate) -->
+                            <g id="room-main_door" class="hospital-room" onclick="selectRoomOnMap('main_door')">
+                                <rect x="345" y="465" width="215" height="62" rx="10" fill="#0284c7" stroke="#7dd3fc" stroke-width="3"/>
+                                <text x="452" y="495" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">🚪 MAIN DOOR / ENTRANCE</text>
+                                <text x="452" y="513" fill="#e0f2fe" font-size="10" text-anchor="middle">Drop-off Zone &amp; Security Gate</text>
+                            </g>
+
+                            <!-- 9. Hospital Cafeteria (Bottom Right-Top) -->
+                            <g id="room-cafeteria" class="hospital-room" onclick="selectRoomOnMap('cafeteria')">
+                                <rect x="670" y="325" width="185" height="90" rx="8" fill="#3b2110" stroke="#f59e0b" stroke-width="2"/>
+                                <text x="762" y="367" fill="#fde68a" font-size="13" font-weight="700" text-anchor="middle">☕ CAFETARIA</text>
+                                <text x="762" y="385" fill="#fbbf24" font-size="10" text-anchor="middle">Healthy Meals &amp; Beverages</text>
+                            </g>
+
+                            <!-- 10. WARD NUMBER 13 - Cardiology & ICU (Bottom Right-Bottom) -->
+                            <g id="room-ward_13" class="hospital-room" onclick="selectRoomOnMap('ward_13')">
+                                <rect x="670" y="425" width="185" height="95" rx="10" fill="#065f46" stroke="#34d399" stroke-width="2.5"/>
+                                <text x="762" y="467" fill="#ffffff" font-size="14" font-weight="800" text-anchor="middle">★ WARD NUMBER 13</text>
+                                <text x="762" y="487" fill="#6ee7b7" font-size="11" text-anchor="middle">Cardiology &amp; Special Care</text>
+                            </g>
+
+                            <!-- AR Marker Icons on Floorplan (Clickable to launch AR preview) -->
+                            <g class="cursor-pointer" onclick="triggerARFromMap('marker1')" title="Scan AR Marker #1">
+                                <circle cx="277" cy="280" r="12" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
+                                <text x="277" y="284" fill="#000" font-size="9" font-weight="bold" text-anchor="middle">AR1</text>
+                            </g>
+                            <g class="cursor-pointer" onclick="triggerARFromMap('marker2')" title="Scan AR Marker #2">
+                                <circle cx="627" cy="280" r="12" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
+                                <text x="627" y="284" fill="#000" font-size="9" font-weight="bold" text-anchor="middle">AR2</text>
+                            </g>
+                            <g class="cursor-pointer" onclick="triggerARFromMap('marker3')" title="Scan AR Marker #3">
+                                <circle cx="627" cy="420" r="12" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
+                                <text x="627" y="424" fill="#000" font-size="9" font-weight="bold" text-anchor="middle">AR3</text>
+                            </g>
+
+                            <!-- ==================== DYNAMIC SHORTEST ROUTE PATH LAYER ==================== -->
+                            <!-- Glow Underlay Polyline -->
+                            <polyline id="indoor-route-glow" points="" fill="none" stroke="#10b981" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.25" />
+                            <!-- Animated Dashed Navigation Line -->
+                            <polyline id="indoor-route-line" class="nav-path-line" points="" fill="none" stroke="#10b981" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+
+                            <!-- Start Pin & End Pin Markers -->
+                            <g id="indoor-start-pin" transform="translate(452, 495)">
+                                <circle r="11" fill="#0ea5e9" stroke="#ffffff" stroke-width="3" filter="url(#glow)"/>
+                                <text y="4" fill="#fff" font-size="10" font-weight="bold" text-anchor="middle">A</text>
+                            </g>
+                            <g id="indoor-end-pin" transform="translate(762, 472)">
+                                <circle r="12" fill="#10b981" stroke="#ffffff" stroke-width="3" filter="url(#glow)"/>
+                                <text y="4" fill="#fff" font-size="10" font-weight="bold" text-anchor="middle">B</text>
+                            </g>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Route Metrics & Turn-by-Turn Steps -->
+                <div class="lg:col-span-4 flex flex-col justify-between bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-5">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div>
+                                <span class="text-[11px] uppercase tracking-wider font-semibold text-emerald-400">Shortest Corridor Path</span>
+                                <h3 class="font-display font-bold text-lg text-white" id="route-summary-title">Main Door → Ward No. 13</h3>
+                            </div>
+                            <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                <i class="fa-solid fa-person-walking-arrow-right text-lg"></i>
+                            </div>
+                        </div>
+
+                        <!-- Distance & Time Cards -->
+                        <div class="grid grid-cols-2 gap-3 my-4">
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                                <div class="text-xs text-slate-400">Walking Distance</div>
+                                <div id="route-distance" class="font-display font-bold text-xl text-emerald-400 mt-0.5">68 Meters</div>
+                            </div>
+                            <div class="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                                <div class="text-xs text-slate-400">Est. Walking Time</div>
+                                <div id="route-time" class="font-display font-bold text-xl text-sky-400 mt-0.5">~1.2 Mins</div>
+                            </div>
+                        </div>
+
+                        <!-- Step-by-Step Navigation Instructions -->
+                        <div class="space-y-2.5">
+                            <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Step-by-Step Directions</div>
+                            <div id="route-steps-list" class="space-y-2.5 max-h-[270px] overflow-y-auto pr-1">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AR Hand-off Callout -->
+                    <div class="bg-gradient-to-br from-slate-800/90 to-slate-900 border border-sky-500/30 rounded-xl p-3.5">
+                        <div class="flex items-start gap-3">
+                            <div class="w-9 h-9 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="fa-solid fa-qrcode"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-bold text-white">Need Visual 3D Wayfinding?</h4>
+                                <p class="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                                    Scan wall-mounted hospital AR Markers (<span class="text-amber-400 font-semibold">AR1, AR2, AR3</span>) to view the live Marker Info Image.
+                                </p>
+                                <button onclick="switchTab('ar')" class="mt-2 text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1">
+                                    <span>Open AR Marker Scanner</span>
+                                    <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ======================================================================= -->
+        <!-- SECTION 3: AR MARKER SCANNER & CUSTOM MARKER IMAGE VIEWER               -->
+        <!-- ======================================================================= -->
+        <section id="section-ar" class="hidden space-y-6">
+            
+            <!-- AR Top Header Bar -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">
+                        <i class="fa-solid fa-cube mr-1"></i> Aravali AR Vision • Indoor Marker Recognition
+                    </span>
+                    <h2 class="font-display font-bold text-xl text-white mt-0.5">AR Marker Scanner &amp; Visual Wayfinding</h2>
+                </div>
+
+                <!-- Upload Custom Marker Info Image (So user can test inserting any image immediately!) -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <label class="cursor-pointer px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs sm:text-sm font-semibold text-emerald-400 flex items-center gap-2 transition">
+                        <i class="fa-solid fa-image"></i>
+                        <span>Upload Your Custom Marker Info Image</span>
+                        <input type="file" id="custom-marker-image-input" accept="image/*" class="hidden" onchange="handleCustomMarkerImageUpload(event)">
+                    </label>
+                    <button onclick="startARCamera()" id="ar-camera-btn" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs sm:text-sm shadow-lg flex items-center gap-2 transition">
+                        <i class="fa-solid fa-video"></i>
+                        <span>Start Live Camera</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main AR Scanner & Marker Info Image Display Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Left Column: Camera Viewport / Marker Scanner Simulation -->
+                <div class="lg:col-span-6 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between space-y-4">
+                    
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                            AR Optical Scanner Feed
+                        </span>
+                        <span id="ar-scan-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            MARKER #2 LOCKED
+                        </span>
+                    </div>
+
+                    <!-- AR Camera Viewport Box -->
+                    <div class="relative w-full h-[360px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                        
+                        <!-- Live Webcam Video (Hidden until enabled) -->
+                        <video id="ar-webcam-video" autoplay playsinline muted class="hidden absolute inset-0 w-full h-full object-cover"></video>
+
+                        <!-- Simulated Hospital Corridor Background (When camera is off) -->
+                        <div id="ar-simulated-bg" class="absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 flex flex-col items-center justify-center p-6 text-center">
+                            <!-- Simulated QR / Fiducial AR Marker Graphic -->
+                            <div class="w-40 h-40 rounded-2xl bg-white p-3 shadow-2xl border-4 border-emerald-400 relative flex flex-col items-center justify-center">
+                                <div class="grid grid-cols-3 gap-1.5 w-full h-full">
+                                    <div class="bg-slate-900 rounded-sm"></div>
+                                    <div class="bg-emerald-600 rounded-sm"></div>
+                                    <div class="bg-slate-900 rounded-sm"></div>
+                                    <div class="bg-sky-600 rounded-sm"></div>
+                                    <div class="bg-slate-900 rounded-sm flex items-center justify-center text-white text-xs font-bold" id="sim-marker-code">AR-2</div>
+                                    <div class="bg-emerald-600 rounded-sm"></div>
+                                    <div class="bg-slate-900 rounded-sm"></div>
+                                    <div class="bg-slate-900 rounded-sm"></div>
+                                    <div class="bg-sky-600 rounded-sm"></div>
+                                </div>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-4 max-w-xs">
+                                Point camera at hospital wall AR Marker or click a simulated marker below to trigger the <strong class="text-emerald-400">Marker Info Image</strong>.
+                            </p>
+                        </div>
+
+                        <!-- Scanning Laser Line -->
+                        <div class="ar-laser"></div>
+
+                        <!-- AR Corner Reticles -->
+                        <div class="absolute top-6 left-6 w-10 h-10 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg pointer-events-none"></div>
+                        <div class="absolute top-6 right-6 w-10 h-10 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg pointer-events-none"></div>
+                        <div class="absolute bottom-6 left-6 w-10 h-10 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg pointer-events-none"></div>
+                        <div class="absolute bottom-6 right-6 w-10 h-10 border-b-4 border-r-4 border-emerald-400 rounded-br-lg pointer-events-none"></div>
+
+                        <!-- Floating 3D AR Direction HUD Overlay -->
+                        <div class="absolute bottom-4 inset-x-4 bg-slate-900/85 backdrop-blur-md border border-emerald-500/40 rounded-xl p-3 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold text-lg ar-float">
+                                    <i id="ar-hud-arrow" class="fa-solid fa-arrow-turn-up"></i>
+                                </div>
+                                <div>
+                                    <div id="ar-hud-title" class="text-xs font-bold text-white">Turn Right Ahead (15m)</div>
+                                    <div id="ar-hud-subtitle" class="text-[11px] text-emerald-400">Ward No. 13 &amp; Cafeteria Wing</div>
+                                </div>
+                            </div>
+                            <span class="text-[10px] font-mono uppercase px-2 py-1 rounded bg-slate-800 text-sky-400">AR HUD ACTIVE</span>
+                        </div>
+                    </div>
+
+                    <!-- Simulate Marker Scan Selector Buttons -->
+                    <div>
+                        <div class="text-xs font-semibold text-slate-400 mb-2">
+                            <i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-1"></i> Test / Simulate Scanning Hospital Markers:
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <button onclick="simulateMarkerScan('marker1')" id="btn-marker1" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition">
+                                <div class="text-xs font-bold text-amber-400">Marker #1 (AR1)</div>
+                                <div class="text-[11px] text-slate-300 truncate">Main Lobby &amp; Reception</div>
+                            </button>
+                            <button onclick="simulateMarkerScan('marker2')" id="btn-marker2" class="p-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500 text-left transition">
+                                <div class="text-xs font-bold text-emerald-400">Marker #2 (AR2)</div>
+                                <div class="text-[11px] text-white truncate">Ward No. 13 Corridor</div>
+                            </button>
+                            <button onclick="simulateMarkerScan('marker3')" id="btn-marker3" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition">
+                                <div class="text-xs font-bold text-amber-400">Marker #3 (AR3)</div>
+                                <div class="text-[11px] text-slate-300 truncate">Cafeteria &amp; Pharmacy</div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Scanned Marker Info Image & Details Card -->
+                <div class="lg:col-span-6 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-4">
+                    
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400">Decoded Marker Info Image</span>
+                            <h3 id="marker-info-heading" class="font-display font-bold text-lg text-white">Marker #2: East Wing Junction (Ward 13)</h3>
+                        </div>
+                        <button onclick="switchTab('indoor')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-sky-400 border border-slate-700">
+                            View on 2D Map
+                        </button>
+                    </div>
+
+                    <!-- DUMMY MARKER INFO IMAGE CONTAINER (Supports user custom image upload or built-in dummy image) -->
+                    <div class="relative rounded-xl overflow-hidden border-2 border-emerald-500/40 bg-slate-950 shadow-inner group">
+                        <img 
+                            id="ar-marker-info-img" 
+                            src="" 
+                            alt="Scanned AR Marker Info Visual" 
+                            class="w-full h-[270px] object-cover transition duration-300"
+                        />
+                        <div class="absolute top-3 right-3 bg-slate-950/85 backdrop-blur-md px-3 py-1 rounded-full text-[11px] font-semibold text-emerald-400 border border-emerald-500/30">
+                            <i class="fa-solid fa-circle-check mr-1"></i> Marker Verified
+                        </div>
+                    </div>
+
+                    <!-- Marker Location Metadata & Nearby Facilities -->
+                    <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold text-slate-400">Current Scanned Checkpoint:</span>
+                            <span id="marker-checkpoint-code" class="text-xs font-mono text-amber-400 font-bold">AR-NODE-02 (East Corridor)</span>
+                        </div>
+                        <p id="marker-description-text" class="text-xs text-slate-300 leading-relaxed">
+                            You are standing at the East Wing Corridor Junction. Proceed straight 15 meters and turn right for <strong class="text-emerald-400">Ward Number 13 (Cardiology &amp; ICU)</strong>, or turn left for the <strong class="text-amber-400">Hospital Cafeteria</strong>.
+                        </p>
+                        <div class="pt-2 border-t border-slate-800/80 flex flex-wrap gap-2" id="marker-nearby-badges">
+                            <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 text-xs font-medium">Ward No. 13 (15m)</span>
+                            <span class="px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 text-xs font-medium">Cafeteria (10m)</span>
+                            <span class="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 text-xs font-medium">Ward No. 12 (20m)</span>
+                        </div>
+                    </div>
+
+                    <!-- Developer Tip for GitHub Pages Image Replacement -->
+                    <div class="text-[11px] text-slate-400 bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
+                        <span>
+                            <i class="fa-solid fa-code text-sky-400 mr-1.5"></i>
+                            <strong>Developer Note:</strong> You can upload any image above or replace <code class="text-emerald-400">markerImage</code> URLs in <code class="text-sky-400">AR_MARKERS_DATA</code> inside <code class="text-amber-300">index.html</code>.
+                        </span>
+                    </div>
+
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ================= GITHUB PAGES & DUMMY IMAGE HELP MODAL ================= -->
+    <div id="help-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-display font-bold text-lg text-white flex items-center gap-2">
+                    <i class="fa-brands fa-github text-emerald-400 text-xl"></i>
+                    <span>GitHub Pages &amp; Custom Marker Setup</span>
+                </h3>
+                <button onclick="toggleHelpModal()" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <p>
+                    <strong class="text-emerald-400">1. 100% GitHub Pages Compatible:</strong> This file (<code class="bg-slate-800 px-1.5 py-0.5 rounded text-sky-300">index.html</code>) uses free OpenStreetMap tiles via Leaflet.js and pure SVG/JS pathfinding—no paid API keys or backend servers required.
+                </p>
+                <p>
+                    <strong class="text-emerald-400">2. Medicine Search:</strong> Try searching <code class="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300">Paracetamol</code> on the Outdoor Map tab. It filters the dummy pharmacies, highlights stores with stock, and draws a direct route line to the nearest pharmacy.
+                </p>
+                <p>
+                    <strong class="text-emerald-400">3. How to Insert Your Own AR Marker Image:</strong>
+                    Either click <em>"Upload Your Custom Marker Info Image"</em> in the AR Nav tab for instant preview, or put your image (e.g., <code class="bg-slate-800 px-1.5 py-0.5 rounded text-sky-300">my-marker.png</code>) in your GitHub repository and update <code class="bg-slate-800 px-1.5 py-0.5 rounded text-emerald-300">AR_MARKERS_DATA</code> in the script below.
+                </p>
+            </div>
+            <div class="pt-3 border-t border-slate-800 flex justify-end">
+                <button onclick="toggleHelpModal()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-xl">
+                    Got It, Let's Explore!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= APPLICATION JAVASCRIPT ================= -->
+    <script>
+        /*************************************************************************
+         * 1. GLOBAL STATE & DUMMY MEDICAL STORES DATA (OUTDOOR MAP)
+         *************************************************************************/
+        // Default Center: Aravali Hub (Gurugram / Delhi-NCR / Jaipur Belt)
+        let userLocation = { lat: 28.4595, lng: 77.0266 };
+        let outdoorMap = null;
+        let currentTileLayer = null;
+        let userMarker = null;
+        let storeMarkers = [];
+        let nearestRouteLine = null;
+
+        // 100% Free OpenStreetMap Tile Providers (No API Key Required)
+        // Includes OSM Humanitarian (HOT), OSM Germany, OSM France, and Standard OSM with automatic 403 error recovery
+        const TILE_PROVIDERS = {
+            osm_hot: {
+                url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+                subdomains: 'abc',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a>'
+            },
+            osm_de: {
+                url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
+                subdomains: 'abc',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors (OSM DE)'
+            },
+            osm_fr: {
+                url: 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+                subdomains: 'abc',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors (OSM FR)'
+            },
+            osm_std: {
+                url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: 'abc',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+            }
+        };
+
+        // Dummy Medical Stores around user coordinates (offsets dynamically applied so they always appear near the user!)
+        const BASE_PHARMACIES = [
+            {
+                id: 1,
+                name: "Aravali Lifeline 24x7 Medicos",
+                latOffset: 0.0032,
+                lngOffset: 0.0041,
+                distanceKm: 0.45,
+                rating: 4.9,
+                openHours: "Open 24 Hours",
+                phone: "+91 98110-45201",
+                address: "Sector 29 Main Market, Near Aravali Metro",
+                inventory: {
+                    "Paracetamol": { stock: 48, price: "₹32 / strip" },
+                    "Dolo 650": { stock: 65, price: "₹30 / strip" },
+                    "ORS": { stock: 120, price: "₹22 / pack" },
+                    "Cetirizine": { stock: 30, price: "₹18 / strip" },
+                    "Metformin": { stock: 40, price: "₹26 / strip" }
+                }
+            },
+            {
+                id: 2,
+                name: "Apollo Health & Wellness Pharmacy",
+                latOffset: -0.0045,
+                lngOffset: 0.0028,
+                distanceKm: 0.62,
+                rating: 4.8,
+                openHours: "Open 24 Hours",
+                phone: "+91 98110-88312",
+                address: "Shop 14, Aravali Arcade Plaza",
+                inventory: {
+                    "Paracetamol": { stock: 25, price: "₹30 / strip" },
+                    "Amoxicillin": { stock: 18, price: "₹95 / strip" },
+                    "Insulin": { stock: 12, price: "₹420 / vial" },
+                    "Dolo 650": { stock: 40, price: "₹30 / strip" }
+                }
+            },
+            {
+                id: 3,
+                name: "Sanjeevani Jan Aushadhi Kendra",
+                latOffset: 0.0058,
+                lngOffset: -0.0035,
+                distanceKm: 0.78,
+                rating: 4.7,
+                openHours: "07:00 AM - 11:30 PM",
+                phone: "+91 98110-19283",
+                address: "Civic Center Block B, Ground Floor",
+                inventory: {
+                    "Paracetamol": { stock: 90, price: "₹12 / strip (Generic)" },
+                    "ORS": { stock: 75, price: "₹15 / pack" },
+                    "Metformin": { stock: 50, price: "₹28 / strip" },
+                    "Cetirizine": { stock: 45, price: "₹10 / strip" }
+                }
+            },
+            {
+                id: 4,
+                name: "MedPlus Express Chemist",
+                latOffset: -0.0025,
+                lngOffset: -0.0062,
+                distanceKm: 0.85,
+                rating: 4.5,
+                openHours: "08:00 AM - 11:00 PM",
+                phone: "+91 98110-66421",
+                address: "Greenwood Residency Gate No. 2",
+                inventory: {
+                    "Amoxicillin": { stock: 34, price: "₹92 / strip" },
+                    "Azithromycin": { stock: 22, price: "₹115 / strip" },
+                    "ORS": { stock: 40, price: "₹20 / pack" },
+                    "Metformin": { stock: 32, price: "₹25 / strip" }
+                }
+            },
+            {
+                id: 5,
+                name: "Guardian Care Super Pharmacy",
+                latOffset: 0.0079,
+                lngOffset: 0.0068,
+                distanceKm: 1.15,
+                rating: 4.6,
+                openHours: "Open 24 Hours",
+                phone: "+91 98110-77549",
+                address: "Aravali Hills Boulevard, Tower C",
+                inventory: {
+                    "Paracetamol": { stock: 19, price: "₹34 / strip" },
+                    "Insulin": { stock: 20, price: "₹410 / vial" },
+                    "Dolo 650": { stock: 55, price: "₹31 / strip" },
+                    "Pantoprazole": { stock: 42, price: "₹65 / strip" }
+                }
+            },
+            {
+                id: 6,
+                name: "Wellness Forever Biotech Store",
+                latOffset: -0.0078,
+                lngOffset: 0.0065,
+                distanceKm: 1.30,
+                rating: 4.4,
+                openHours: "09:00 AM - 10:30 PM",
+                phone: "+91 98110-33910",
+                address: "South Point Mall, Lower Ground",
+                inventory: {
+                    "Cetirizine": { stock: 60, price: "₹19 / strip" },
+                    "Vitamin C": { stock: 85, price: "₹45 / strip" },
+                    "Insulin": { stock: 8, price: "₹430 / vial" }
+                }
+            },
+            {
+                id: 7,
+                name: "Aravali Super-Specialty Hospital (Indoor Pharmacy)",
+                latOffset: 0.0012,
+                lngOffset: -0.0018,
+                distanceKm: 0.25,
+                rating: 5.0,
+                openHours: "Open 24 Hours (Main Hospital Wing)",
+                phone: "+91 98110-00108",
+                address: "Aravali Super-Specialty Hospital, Wing A",
+                isHospital: true,
+                inventory: {
+                    "Paracetamol": { stock: 150, price: "₹28 / strip" },
+                    "Dolo 650": { stock: 110, price: "₹29 / strip" },
+                    "Amoxicillin": { stock: 65, price: "₹88 / strip" },
+                    "Insulin": { stock: 40, price: "₹395 / vial" },
+                    "ORS": { stock: 200, price: "₹18 / pack" },
+                    "Cetirizine": { stock: 95, price: "₹16 / strip" },
+                    "Metformin": { stock: 120, price: "₹22 / strip" }
+                }
+            }
+        ];
+
+        /*************************************************************************
+         * 2. INITIALIZE OUTDOOR LEAFLET MAP & PHARMACY RENDERING
+         *************************************************************************/
+        function initOutdoorMap() {
+            outdoorMap = L.map('outdoor-map', {
+                zoomControl: true
+            }).setView([userLocation.lat, userLocation.lng], 15);
+
+            // Default to Free OpenStreetMap Humanitarian (HOT) - specifically designed for medical/lifeline mapping & never blocks embeds
+            setMapTileStyle('osm_hot');
+            updateUserMarkerOnMap();
+            renderPharmacies("");
+        }
+
+        function setMapTileStyle(styleKey) {
+            const mapEl = document.getElementById('outdoor-map');
+            ['osm_hot', 'osm_de', 'osm_fr', 'osm_std'].forEach(k => {
+                const btn = document.getElementById(`tile-btn-${k}`);
+                if (!btn) return;
+                if (k === styleKey) {
+                    btn.className = "px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-600 text-white transition";
+                } else {
+                    btn.className = "px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition";
+                }
+            });
+
+            if (currentTileLayer) {
+                outdoorMap.removeLayer(currentTileLayer);
+                currentTileLayer = null;
+            }
+
+            mapEl.classList.remove('offline-grid-bg');
+            const provider = TILE_PROVIDERS[styleKey] || TILE_PROVIDERS.osm_hot;
+            currentTileLayer = L.tileLayer(provider.url, {
+                maxZoom: 19,
+                subdomains: provider.subdomains || 'abc',
+                attribution: provider.attribution
+            }).addTo(outdoorMap);
+
+            // Automatic fallback: if tile.openstreetmap.org returns a 403 block inside an iframe preview, switch seamlessly to OSM Humanitarian
+            let tileErrorCount = 0;
+            currentTileLayer.on('tileerror', function() {
+                tileErrorCount++;
+                if (styleKey === 'osm_std' && tileErrorCount > 2) {
+                    setMapTileStyle('osm_hot');
+                }
+            });
+        }
+
+        // Fetch Real Road Route via OSRM (Open Source Routing Machine) Free Public API
+        async function drawRouteToStore(destLat, destLng, storeName) {
+            if (nearestRouteLine) {
+                outdoorMap.removeLayer(nearestRouteLine);
+            }
+
+            // OSRM public routing endpoint (Free, no API key required)
+            const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${userLocation.lng},${userLocation.lat};${destLng},${destLat}?overview=full&geometries=geojson`;
+
+            try {
+                const response = await fetch(osrmUrl);
+                const data = await response.json();
+                
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                    const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); // Convert [lng, lat] to [lat, lng]
+                    
+                    nearestRouteLine = L.polyline(
+                        coords,
+                        { color: '#10b981', weight: 6, opacity: 0.9 }
+                    ).addTo(outdoorMap);
+
+                    outdoorMap.fitBounds(nearestRouteLine.getBounds(), { padding: [55, 55], maxZoom: 16 });
+                    return;
+                }
+            } catch (err) {
+                console.warn("OSRM network routing fallback triggered due to CORS/offline constraint:", err);
+            }
+
+            // Fallback: Smart orthogonal grid routing if network is restricted in iframe
+            const midLat = (userLocation.lat + destLat) / 2;
+            const routeCoordinates = [
+                [userLocation.lat, userLocation.lng],
+                [userLocation.lat, (userLocation.lng + destLng) / 2],
+                [midLat, (userLocation.lng + destLng) / 2],
+                [midLat, destLng],
+                [destLat, destLng]
+            ];
+
+            nearestRouteLine = L.polyline(
+                routeCoordinates,
+                { color: '#10b981', weight: 5, dashArray: '10, 8', opacity: 0.95 }
+            ).addTo(outdoorMap);
+
+            outdoorMap.fitBounds(nearestRouteLine.getBounds(), { padding: [55, 55], maxZoom: 16 });
+        }
+
+        function updateUserMarkerOnMap() {
+            const gpsIcon = L.divIcon({
+                className: '',
+                html: `<div class="gps-pulse" title="Your Live Location"></div>`,
+                iconSize: [22, 22],
+                iconAnchor: [11, 11]
+            });
+
+            if (userMarker) {
+                userMarker.setLatLng([userLocation.lat, userLocation.lng]);
+            } else {
+                userMarker = L.marker([userLocation.lat, userLocation.lng], { icon: gpsIcon })
+                    .addTo(outdoorMap)
+                    .bindPopup(`
+                        <div class="p-1">
+                            <div class="font-bold text-sky-400 text-sm">📍 Your Live Location</div>
+                            <div class="text-xs text-slate-300 mt-0.5">Aravali Lifeline Active GPS Node</div>
+                        </div>
+                    `);
+            }
+        }
+
+        // Detect Real User Location via Browser Geolocation API
+        function locateUserGPS() {
+            const statusEl = document.getElementById('gps-status-text');
+            statusEl.textContent = "Acquiring satellite GPS lock...";
+
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLocation.lat = position.coords.latitude;
+                        userLocation.lng = position.coords.longitude;
+                        statusEl.textContent = `${userLocation.lat.toFixed(4)}° N, ${userLocation.lng.toFixed(4)}° E (Live GPS)`;
+                        outdoorMap.flyTo([userLocation.lat, userLocation.lng], 15, { duration: 1.2 });
+                        updateUserMarkerOnMap();
+                        const currentQuery = document.getElementById('medicine-search-input').value.trim();
+                        renderPharmacies(currentQuery);
+                    },
+                    () => {
+                        // Fallback if user denies permission on GitHub Pages
+                        statusEl.textContent = `${userLocation.lat.toFixed(4)}° N, ${userLocation.lng.toFixed(4)}° E (Simulated GPS)`;
+                        outdoorMap.flyTo([userLocation.lat, userLocation.lng], 15, { duration: 1.0 });
+                        userMarker.openPopup();
+                    },
+                    { enableHighAccuracy: true, timeout: 6000 }
+                );
+            } else {
+                statusEl.textContent = "GPS Unavailable - Using Default Hub";
+            }
+        }
+
+        // Filter & Render Medical Stores on Map and Sidebar
+        function renderPharmacies(searchQuery = "") {
+            const normalizedQuery = searchQuery.trim().toLowerCase();
+            const listContainer = document.getElementById('pharmacy-list-container');
+            const titleEl = document.getElementById('store-list-title');
+            const subtitleEl = document.getElementById('store-filter-subtitle');
+            const badgeEl = document.getElementById('store-count-badge');
+            const clearBtn = document.getElementById('clear-search-btn');
+
+            if (normalizedQuery.length > 0) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
+
+            // Clear existing markers & route lines
+            storeMarkers.forEach(m => outdoorMap.removeLayer(m));
+            storeMarkers = [];
+            if (nearestRouteLine) {
+                outdoorMap.removeLayer(nearestRouteLine);
+                nearestRouteLine = null;
+            }
+
+            // Filter stores that have the searched medicine
+            const matchedStores = [];
+
+            BASE_PHARMACIES.forEach(store => {
+                const storeLat = userLocation.lat + store.latOffset;
+                const storeLng = userLocation.lng + store.lngOffset;
+
+                // Check if store carries the searched medicine
+                let matchedMedKey = null;
+                let matchedMedData = null;
+
+                if (normalizedQuery === "") {
+                    matchedStores.push({ ...store, lat: storeLat, lng: storeLng, matchedMedKey: null, matchedMedData: null });
+                } else {
+                    for (const [medName, medDetails] of Object.entries(store.inventory)) {
+                        if (medName.toLowerCase().includes(normalizedQuery)) {
+                            matchedMedKey = medName;
+                            matchedMedData = medDetails;
+                            break;
+                        }
+                    }
+                    if (matchedMedKey) {
+                        matchedStores.push({ ...store, lat: storeLat, lng: storeLng, matchedMedKey, matchedMedData });
+                    }
+                }
+            });
+
+            // Sort shortlisted stores by distance
+            matchedStores.sort((a, b) => a.distanceKm - b.distanceKm);
+
+            // Update Headers
+            if (normalizedQuery === "") {
+                titleEl.textContent = "Nearby Medical Stores";
+                subtitleEl.textContent = "Showing all verified pharmacies around your live location";
+                badgeEl.textContent = `${matchedStores.length} Stores`;
+            } else {
+                titleEl.textContent = `Shortlisted for "${searchQuery}"`;
+                subtitleEl.textContent = matchedStores.length > 0
+                    ? `Found ${matchedStores.length} nearby stores with "${searchQuery}" in stock`
+                    : `No stores found for "${searchQuery}". Try Paracetamol, Dolo 650, or Insulin.`;
+                badgeEl.textContent = `${matchedStores.length} In Stock`;
+            }
+
+            listContainer.innerHTML = "";
+
+            if (matchedStores.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="p-6 text-center bg-slate-950/60 border border-slate-800 rounded-xl my-4">
+                        <i class="fa-solid fa-prescription-bottle text-3xl text-slate-600 mb-2"></i>
+                        <div class="text-sm font-bold text-white">No Stock Found Nearby</div>
+                        <p class="text-xs text-slate-400 mt-1">Try searching for <span class="text-emerald-400 cursor-pointer underline" onclick="quickPillSearch('Paracetamol')">Paracetamol</span>, <span class="text-emerald-400 cursor-pointer underline" onclick="quickPillSearch('Insulin')">Insulin</span>, or <span class="text-emerald-400 cursor-pointer underline" onclick="quickPillSearch('ORS')">ORS</span>.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Draw dashed route line to the closest shortlisted store when searching
+            if (normalizedQuery !== "" && matchedStores.length > 0) {
+                const nearest = matchedStores[0];
+                nearestRouteLine = L.polyline(
+                    [[userLocation.lat, userLocation.lng], [nearest.lat, nearest.lng]],
+                    { color: '#10b981', weight: 4, dashArray: '8, 8', opacity: 0.9 }
+                ).addTo(outdoorMap);
+            }
+
+            // Render each store card and map marker
+            matchedStores.forEach((store, idx) => {
+                const isNearestHighlight = (normalizedQuery !== "" && idx === 0);
+                const markerColor = store.isHospital ? '#f43f5e' : '#10b981';
+
+                const customPin = L.divIcon({
+                    className: '',
+                    html: `
+                        <div style="background:${markerColor};" class="w-9 h-9 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white text-sm font-bold transform transition hover:scale-110">
+                            <i class="fa-solid ${store.isHospital ? 'fa-hospital' : 'fa-capsules'}"></i>
+                        </div>
+                    `,
+                    iconSize: [36, 36],
+                    iconAnchor: [18, 18]
+                });
+
+                const medStockHtml = store.matchedMedKey ? `
+                    <div class="mt-2 p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between">
+                        <div>
+                            <span class="text-[11px] text-emerald-300 font-bold">✅ ${store.matchedMedKey} Available</span>
+                            <div class="text-[11px] text-slate-300">${store.matchedMedData.stock} Strips in stock</div>
+                        </div>
+                        <span class="text-xs font-bold text-emerald-400">${store.matchedMedData.price}</span>
+                    </div>
+                ` : `
+                    <div class="mt-2 flex flex-wrap gap-1">
+                        ${Object.keys(store.inventory).slice(0, 4).map(m => `<span class="px-2 py-0.5 text-[10px] rounded bg-slate-800 text-slate-300">${m}</span>`).join('')}
+                    </div>
+                `;
+
+                const marker = L.marker([store.lat, store.lng], { icon: customPin })
+                    .addTo(outdoorMap)
+                    .bindPopup(`
+                        <div class="min-w-[220px] p-1">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs font-bold text-emerald-400">${store.distanceKm} km away</span>
+                                <span class="text-xs text-amber-400">★ ${store.rating}</span>
+                            </div>
+                            <div class="font-bold text-sm text-white mt-0.5">${store.name}</div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">${store.address}</div>
+                            ${medStockHtml}
+                            <div class="mt-2.5 flex flex-col gap-1.5">
+                                <button onclick="drawRouteToStore(${store.lat}, ${store.lng}, '${store.name.replace(/'/g, "\\'")}')" class="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold">
+                                    <i class="fa-solid fa-route mr-1"></i> Draw Route to Store
+                                </button>
+                                ${store.isHospital ? `
+                                    <button onclick="switchTab('indoor')" class="w-full py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-semibold">
+                                        <i class="fa-solid fa-hospital-user mr-1"></i> Enter 2D Indoor Hospital Map
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `);
+
+                storeMarkers.push(marker);
+
+                if (isNearestHighlight) {
+                    setTimeout(() => marker.openPopup(), 250);
+                }
+
+                // Build Sidebar Card
+                const card = document.createElement('div');
+                card.className = `p-3.5 rounded-xl border transition cursor-pointer ${
+                    isNearestHighlight 
+                        ? 'bg-emerald-950/40 border-emerald-500/70 shadow-lg shadow-emerald-500/10' 
+                        : 'bg-slate-950/90 border-slate-800 hover:border-slate-700'
+                }`;
+                card.onclick = () => {
+                    outdoorMap.flyTo([store.lat, store.lng], 16, { duration: 0.8 });
+                    marker.openPopup();
+                };
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-bold text-sm text-white">${store.name}</h3>
+                                ${isNearestHighlight ? `<span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500 text-slate-950 rounded-full">NEAREST STOCK</span>` : ''}
+                            </div>
+                            <p class="text-xs text-slate-400 mt-0.5">${store.address}</p>
+                        </div>
+                        <span class="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-sky-400 shrink-0">
+                            ${store.distanceKm} km
+                        </span>
+                    </div>
+
+                    ${medStockHtml}
+
+                    <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                        <span><i class="fa-regular fa-clock text-emerald-400 mr-1"></i>${store.openHours}</span>
+                        <div class="flex items-center gap-1.5">
+                            ${store.isHospital ? `
+                                <button onclick="event.stopPropagation(); switchTab('indoor')" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 font-semibold">
+                                    2D Indoor Map
+                                </button>
+                            ` : ''}
+                            <button onclick="event.stopPropagation(); drawRouteToStore(${store.lat}, ${store.lng}, '${store.name.replace(/'/g, "\\'")}'); outdoorMap.openPopup && storeMarkers[${idx}].openPopup();" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-semibold">
+                                <i class="fa-solid fa-diamond-turn-right mr-1"></i>Route to Store
+                            </button>
+                        </div>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+            });
+        }
+
+        function searchMedicine() {
+            const query = document.getElementById('medicine-search-input').value;
+            renderPharmacies(query);
+        }
+
+        function quickPillSearch(medName) {
+            document.getElementById('medicine-search-input').value = medName;
+            renderPharmacies(medName);
+        }
+
+        function clearMedicineSearch() {
+            document.getElementById('medicine-search-input').value = "";
+            renderPharmacies("");
+        }
+
+        /*************************************************************************
+         * 3. 2D INDOOR HOSPITAL FLOORPLAN & DIJKSTRA SHORTEST PATH ALGORITHM
+         *************************************************************************/
+        let currentIndoorZoom = 1;
+
+        function zoomIndoorMap(delta) {
+            currentIndoorZoom = Math.min(1.8, Math.max(0.75, currentIndoorZoom + delta));
+            const svg = document.getElementById('hospital-floorplan-svg');
+            svg.style.transform = `scale(${currentIndoorZoom})`;
+        }
+
+        function resetIndoorZoom() {
+            currentIndoorZoom = 1;
+            const svg = document.getElementById('hospital-floorplan-svg');
+            svg.style.transform = `scale(1)`;
+        }
+
+        // Indoor Graph Nodes (Rooms + Hallway Corridor Waypoints)
+        const INDOOR_NODES = {
+            // Rooms (Doorway entry coordinates + Room center for pin)
+            main_door:  { x: 452, y: 465, pinX: 452, pinY: 495, label: "Main Entrance / Main Door" },
+            reception:  { x: 384, y: 450, pinX: 384, pinY: 385, label: "Reception & Helpdesk" },
+            pharmacy:   { x: 521, y: 450, pinX: 521, pinY: 385, label: "Indoor Pharmacy" },
+            emergency:  { x: 245, y: 140, pinX: 140, pinY: 130, label: "Emergency & Trauma Ward" },
+            opd:        { x: 245, y: 420, pinX: 140, pinY: 410, label: "OPD Consultation Clinic" },
+            lab:        { x: 402, y: 245, pinX: 402, pinY: 130, label: "Diagnostic & X-Ray Lab" },
+            icu:        { x: 540, y: 155, pinX: 540, pinY: 95,  label: "ICU Critical Care Unit" },
+            elevator:   { x: 540, y: 245, pinX: 540, pinY: 198, label: "Central Elevators & Stairs" },
+            ward_10:    { x: 660, y: 90,  pinX: 762, pinY: 85,  label: "Ward No. 10 (General)" },
+            ward_12:    { x: 660, y: 190, pinX: 762, pinY: 188, label: "Ward No. 12 (Pediatrics)" },
+            cafeteria:  { x: 660, y: 370, pinX: 762, pinY: 370, label: "Hospital Cafeteria" },
+            ward_13:    { x: 660, y: 472, pinX: 762, pinY: 472, label: "Ward Number 13 (Cardiology Special)" },
+
+            // Hallway Corridor Junction Nodes
+            c_gate:      { x: 452, y: 450, label: "Main Lobby Foyer" },
+            c_center:    { x: 452, y: 280, label: "Central Lifeline Corridor" },
+            c_elev:      { x: 540, y: 280, label: "Elevator & Stairs Lobby" },
+            c_west_mid:  { x: 277, y: 280, label: "West Corridor Junction (AR1)" },
+            c_west_top:  { x: 277, y: 140, label: "North-West Hallway" },
+            c_west_bot:  { x: 277, y: 420, label: "South-West Hallway" },
+            c_east_mid:  { x: 627, y: 280, label: "East Wing Junction (AR2)" },
+            c_east_top1: { x: 627, y: 190, label: "North-East Hallway (Lower)" },
+            c_east_top2: { x: 627, y: 90,  label: "North-East Hallway (Upper)" },
+            c_east_bot1: { x: 627, y: 370, label: "South-East Hallway (Cafeteria)" },
+            c_east_bot2: { x: 627, y: 472, label: "South-East Hallway (Ward 13)" }
+        };
+
+        // Undirected Corridor Edges
+        const INDOOR_EDGES = [
+            ['main_door', 'c_gate'],
+            ['reception', 'c_gate'],
+            ['pharmacy', 'c_gate'],
+            ['c_gate', 'c_center'],
+            ['lab', 'c_center'],
+            ['c_center', 'c_west_mid'],
+            ['c_center', 'c_elev'],
+            ['c_elev', 'elevator'],
+            ['elevator', 'icu'],
+            ['c_elev', 'c_east_mid'],
+            // West Corridor
+            ['c_west_mid', 'c_west_top'],
+            ['c_west_top', 'emergency'],
+            ['c_west_mid', 'c_west_bot'],
+            ['c_west_bot', 'opd'],
+            // East Corridor
+            ['c_east_mid', 'c_east_top1'],
+            ['c_east_top1', 'ward_12'],
+            ['c_east_top1', 'c_east_top2'],
+            ['c_east_top2', 'ward_10'],
+            ['c_east_mid', 'c_east_bot1'],
+            ['c_east_bot1', 'cafeteria'],
+            ['c_east_bot1', 'c_east_bot2'],
+            ['c_east_bot2', 'ward_13']
+        ];
+
+        // Build adjacency list with Euclidean weights
+        function buildIndoorGraph() {
+            const graph = {};
+            Object.keys(INDOOR_NODES).forEach(k => graph[k] = []);
+            INDOOR_EDGES.forEach(([u, v]) => {
+                const dx = INDOOR_NODES[u].x - INDOOR_NODES[v].x;
+                const dy = INDOOR_NODES[u].y - INDOOR_NODES[v].y;
+                const dist = Math.hypot(dx, dy);
+                graph[u].push({ node: v, weight: dist });
+                graph[v].push({ node: u, weight: dist });
+            });
+            return graph;
+        }
+
+        const HOSPITAL_GRAPH = buildIndoorGraph();
+
+        // Dijkstra's Shortest Route Algorithm
+        function findShortestHospitalPath(startKey, endKey) {
+            const distances = {};
+            const previous = {};
+            const queue = new Set(Object.keys(INDOOR_NODES));
+
+            Object.keys(INDOOR_NODES).forEach(k => {
+                distances[k] = Infinity;
+                previous[k] = null;
+            });
+            distances[startKey] = 0;
+
+            while (queue.size > 0) {
+                let u = null;
+                queue.forEach(node => {
+                    if (u === null || distances[node] < distances[u]) {
+                        u = node;
+                    }
+                });
+
+                if (u === endKey || distances[u] === Infinity) break;
+                queue.delete(u);
+
+                HOSPITAL_GRAPH[u].forEach(neighbor => {
+                    if (queue.has(neighbor.node)) {
+                        const alt = distances[u] + neighbor.weight;
+                        if (alt < distances[neighbor.node]) {
+                            distances[neighbor.node] = alt;
+                            previous[neighbor.node] = u;
+                        }
+                    }
+                });
+            }
+
+            const path = [];
+            let curr = endKey;
+            while (curr !== null) {
+                path.unshift(curr);
+                curr = previous[curr];
+            }
+            return { path, pixelDistance: distances[endKey] };
+        }
+
+        // Render Shortest Path on 2D Floorplan SVG
+        function calculateIndoorRoute() {
+            const startKey = document.getElementById('indoor-start-select').value;
+            const endKey = document.getElementById('indoor-end-select').value;
+
+            // Highlight selected rooms on SVG
+            document.querySelectorAll('.hospital-room rect').forEach(r => {
+                r.classList.remove('room-selected-start', 'room-selected-end');
+            });
+            const startRoomEl = document.querySelector(`#room-${startKey} rect`);
+            const endRoomEl = document.querySelector(`#room-${endKey} rect`);
+            if (startRoomEl) startRoomEl.classList.add('room-selected-start');
+            if (endRoomEl) endRoomEl.classList.add('room-selected-end');
+
+            const { path, pixelDistance } = findShortestHospitalPath(startKey, endKey);
+
+            // Build SVG polyline coordinate string
+            const startNode = INDOOR_NODES[startKey];
+            const endNode = INDOOR_NODES[endKey];
+
+            const pointsArray = [];
+            pointsArray.push(`${startNode.pinX},${startNode.pinY}`);
+            path.forEach(nodeKey => {
+                const n = INDOOR_NODES[nodeKey];
+                pointsArray.push(`${n.x},${n.y}`);
+            });
+            pointsArray.push(`${endNode.pinX},${endNode.pinY}`);
+
+            const pointsStr = pointsArray.join(' ');
+            document.getElementById('indoor-route-glow').setAttribute('points', pointsStr);
+            document.getElementById('indoor-route-line').setAttribute('points', pointsStr);
+
+            // Position A & B Pins
+            document.getElementById('indoor-start-pin').setAttribute('transform', `translate(${startNode.pinX}, ${startNode.pinY})`);
+            document.getElementById('indoor-end-pin').setAttribute('transform', `translate(${endNode.pinX}, ${endNode.pinY})`);
+
+            // Update Summary Metrics
+            const meters = Math.max(12, Math.round(pixelDistance * 0.14));
+            const mins = Math.max(0.5, (meters / 55)).toFixed(1);
+
+            document.getElementById('route-summary-title').textContent = `${startNode.label.split('/')[0].trim()} → ${endNode.label.split('(')[0].trim()}`;
+            document.getElementById('route-distance').textContent = `${meters} Meters`;
+            document.getElementById('route-time').textContent = `~${mins} Mins`;
+
+            // Populate Step-by-Step Directions
+            const stepsContainer = document.getElementById('route-steps-list');
+            stepsContainer.innerHTML = "";
+
+            if (startKey === endKey) {
+                stepsContainer.innerHTML = `
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-emerald-400">
+                        You are already at <strong>${startNode.label}</strong>! Please select a different start or destination point.
+                    </div>
+                `;
+                return;
+            }
+
+            path.forEach((nodeKey, index) => {
+                const n = INDOOR_NODES[nodeKey];
+                let icon = "fa-arrow-up";
+                let stepText = `Pass through <strong>${n.label}</strong>`;
+
+                if (index === 0) {
+                    icon = "fa-door-open text-sky-400";
+                    stepText = `Start at <strong class="text-sky-400">${n.label}</strong>`;
+                } else if (index === path.length - 1) {
+                    icon = "fa-flag-checkered text-emerald-400";
+                    stepText = `Arrive at destination <strong class="text-emerald-400">${n.label}</strong>`;
+                } else if (nodeKey.includes('east') || nodeKey.includes('west')) {
+                    icon = "fa-diamond-turn-right text-amber-400";
+                    stepText = `Follow corridor via <strong>${n.label}</strong>`;
+                }
+
+                const stepEl = document.createElement('div');
+                stepEl.className = "flex items-center gap-3 p-2.5 rounded-xl bg-slate-950/90 border border-slate-800/90 text-xs";
+                stepEl.innerHTML = `
+                    <div class="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center shrink-0">
+                        <i class="fa-solid ${icon}"></i>
+                    </div>
+                    <div class="text-slate-200 leading-snug">${stepText}</div>
+                `;
+                stepsContainer.appendChild(stepEl);
+            });
+        }
+
+        function setQuickIndoorRoute(startKey, endKey) {
+            document.getElementById('indoor-start-select').value = startKey;
+            document.getElementById('indoor-end-select').value = endKey;
+            calculateIndoorRoute();
+        }
+
+        function swapIndoorLocations() {
+            const startSelect = document.getElementById('indoor-start-select');
+            const endSelect = document.getElementById('indoor-end-select');
+            const temp = startSelect.value;
+            startSelect.value = endSelect.value;
+            endSelect.value = temp;
+            calculateIndoorRoute();
+        }
+
+        // Clicking a room on the 2D map can now set either Destination (default) or Start if desired
+        function selectRoomOnMap(roomKey) {
+            const endSelect = document.getElementById('indoor-end-select');
+            const startSelect = document.getElementById('indoor-start-select');
+            
+            if (startSelect.value === roomKey) return;
+            endSelect.value = roomKey;
+            calculateIndoorRoute();
+        }
+
+        /*************************************************************************
+         * 4. AR MARKER SCANNER & CUSTOM MARKER INFO IMAGE HANDLER
+         *************************************************************************/
+        // Helper to generate crisp, self-contained SVG Marker Info Diagrams (Zero external network dependency!)
+        function createMarkerSVGDataURI(bgHex, accentHex, markerTag, titleText, dir1, dir2, floorNote) {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450">
+                <defs>
+                    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="${bgHex}"/>
+                        <stop offset="100%" stop-color="#090d16"/>
+                    </linearGradient>
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+                    </pattern>
+                </defs>
+                <rect width="800" height="450" fill="url(#bg)"/>
+                <rect width="800" height="450" fill="url(#grid)"/>
+                <rect x="28" y="28" width="744" height="394" rx="20" fill="none" stroke="${accentHex}" stroke-width="3" stroke-dasharray="10,6"/>
+                <rect x="55" y="52" width="175" height="44" rx="10" fill="${accentHex}"/>
+                <text x="142" y="80" fill="#090d16" font-family="sans-serif" font-size="18" font-weight="900" text-anchor="middle">${markerTag}</text>
+                <text x="250" y="81" fill="#ffffff" font-family="sans-serif" font-size="22" font-weight="800">${titleText}</text>
+                <line x1="55" y1="118" x2="745" y2="118" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+                <rect x="55" y="145" width="690" height="88" rx="14" fill="rgba(15,23,42,0.85)" stroke="${accentHex}" stroke-width="2"/>
+                <text x="85" y="198" fill="${accentHex}" font-family="sans-serif" font-size="25" font-weight="800">${dir1}</text>
+                <rect x="55" y="252" width="690" height="88" rx="14" fill="rgba(15,23,42,0.85)" stroke="rgba(56,189,248,0.5)" stroke-width="2"/>
+                <text x="85" y="305" fill="#bae6fd" font-family="sans-serif" font-size="23" font-weight="700">${dir2}</text>
+                <text x="400" y="390" fill="#94a3b8" font-family="monospace" font-size="15" text-anchor="middle">${floorNote}</text>
+            </svg>`;
+            return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+        }
+
+        // Dummy AR Markers Data (You can upload any custom image or replace markerImage URLs!)
+        const AR_MARKERS_DATA = {
+            marker1: {
+                code: "AR-1",
+                badge: "MARKER #1 LOCKED",
+                heading: "Marker #1: Main Door Lobby & Reception",
+                checkpoint: "AR-NODE-01 (Main Lobby Junction)",
+                hudTitle: "Go Straight Ahead (20m)",
+                hudSubtitle: "Emergency Ward & OPD Consultation",
+                arrowIcon: "fa-arrow-up",
+                description: "You are at the Main Entrance Lobby near Reception. Proceed straight for Central Lifeline Corridor, turn left for OPD Clinic, or turn right towards East Wing (Ward 13).",
+                nearby: ["Emergency Ward (15m)", "OPD Wing (18m)", "Reception (10m)"],
+                markerImage: createMarkerSVGDataURI(
+                    "#0f2942", "#38bdf8", "AR MARKER #1", "MAIN DOOR LOBBY JUNCTION",
+                    "⬆ Emergency & Trauma Center — 15m North",
+                    "➔ East Corridor (Ward 13 & Cafeteria) — 35m East",
+                    "ARAVALI HOSPITAL • GROUND FLOOR WAYFINDING BOARD"
+                )
+            },
+            marker2: {
+                code: "AR-2",
+                badge: "MARKER #2 LOCKED",
+                heading: "Marker #2: Cafeteria & East Wing Junction",
+                checkpoint: "AR-NODE-02 (East Corridor)",
+                hudTitle: "Turn Right Ahead (15m)",
+                hudSubtitle: "Ward No. 13 (Cardiology / ICU)",
+                arrowIcon: "fa-arrow-turn-up",
+                description: "You are standing at the East Wing Corridor Junction. Proceed 15 meters south for Ward Number 13 (Cardiology & Special Care) or Hospital Cafeteria.",
+                nearby: ["Ward No. 13 (15m)", "Cafeteria (10m)", "Ward No. 12 (14m)"],
+                markerImage: createMarkerSVGDataURI(
+                    "#064e3b", "#10b981", "AR MARKER #2", "CAFETERIA & EAST WING JUNCTION",
+                    "➔ Ward Number 13 (Cardiology ICU) — 15m Ahead",
+                    "☕ Hospital Cafeteria & Lounge — 10m Right",
+                    "ARAVALI HOSPITAL • EAST CORRIDOR VERIFIED AR NODE"
+                )
+            },
+            marker3: {
+                code: "AR-3",
+                badge: "MARKER #3 LOCKED",
+                heading: "Marker #3: Ward Number 13 Corridor Entrance",
+                checkpoint: "AR-NODE-03 (South-East Hallway)",
+                hudTitle: "Destination Right Here (5m)",
+                hudSubtitle: "Ward No. 13 Entrance & Cafeteria",
+                arrowIcon: "fa-location-dot",
+                description: "You have reached the South-East Wing outside the Hospital Cafeteria. Ward Number 13 (Cardiology & Special Care) entrance is immediately to your right.",
+                nearby: ["Ward No. 13 Door (5m)", "Cafeteria Entrance (3m)", "Indoor Pharmacy (22m)"],
+                markerImage: createMarkerSVGDataURI(
+                    "#3b2110", "#f59e0b", "AR MARKER #3", "WARD NUMBER 13 ENTRANCE",
+                    "★ ARRIVED: Ward Number 13 Door — 5m Right",
+                    "☕ Hospital Cafeteria Counter — 3m Left",
+                    "ARAVALI HOSPITAL • DESTINATION CHECKPOINT VERIFIED"
+                )
+            }
+        };
+
+        let customUploadedImageURL = null;
+        let webcamStream = null;
+
+        function simulateMarkerScan(markerKey) {
+            const data = AR_MARKERS_DATA[markerKey];
+            if (!data) return;
+
+            // Update button active styles
+            ['marker1', 'marker2', 'marker3'].forEach(k => {
+                const btn = document.getElementById(`btn-${k}`);
+                if (k === markerKey) {
+                    btn.className = "p-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500 text-left transition";
+                } else {
+                    btn.className = "p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition";
+                }
+            });
+
+            // Update AR HUD & Marker Info Image
+            document.getElementById('sim-marker-code').textContent = data.code;
+            document.getElementById('ar-scan-badge').textContent = data.badge;
+            document.getElementById('ar-hud-title').textContent = data.hudTitle;
+            document.getElementById('ar-hud-subtitle').textContent = data.hudSubtitle;
+            document.getElementById('ar-hud-arrow').className = `fa-solid ${data.arrowIcon}`;
+
+            document.getElementById('marker-info-heading').textContent = data.heading;
+            document.getElementById('marker-checkpoint-code').textContent = data.checkpoint;
+            document.getElementById('marker-description-text').textContent = data.description;
+
+            // If user uploaded their own custom marker image, show that; otherwise show the marker's dummy image
+            const imgEl = document.getElementById('ar-marker-info-img');
+            imgEl.src = customUploadedImageURL ? customUploadedImageURL : data.markerImage;
+
+            // Render nearby badges
+            const badgesContainer = document.getElementById('marker-nearby-badges');
+            badgesContainer.innerHTML = data.nearby.map(item =>
+                `<span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 text-xs font-medium">${item}</span>`
+            ).join('');
+        }
+
+        // Allow User to Upload Any Custom Image to Test Marker Info Display
+        function handleCustomMarkerImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                customUploadedImageURL = e.target.result;
+                document.getElementById('ar-marker-info-img').src = customUploadedImageURL;
+                document.getElementById('ar-scan-badge').textContent = "CUSTOM IMAGE LOADED";
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Toggle Real Device Camera for AR Scanner
+        async function startARCamera() {
+            const videoEl = document.getElementById('ar-webcam-video');
+            const simBg = document.getElementById('ar-simulated-bg');
+            const camBtn = document.getElementById('ar-camera-btn');
+
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                webcamStream = null;
+                videoEl.classList.add('hidden');
+                simBg.classList.remove('hidden');
+                camBtn.innerHTML = `<i class="fa-solid fa-video"></i><span>Start Live Camera</span>`;
+                return;
+            }
+
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: false
+                });
+                videoEl.srcObject = webcamStream;
+                videoEl.classList.remove('hidden');
+                simBg.classList.add('hidden');
+                camBtn.innerHTML = `<i class="fa-solid fa-video-slash"></i><span>Stop Camera</span>`;
+            } catch (err) {
+                document.getElementById('ar-scan-badge').textContent = "SIMULATION MODE (NO CAM)";
+            }
+        }
+
+        function triggerARFromMap(markerKey) {
+            switchTab('ar');
+            simulateMarkerScan(markerKey);
+        }
+
+        /*************************************************************************
+         * 5. TAB NAVIGATION & MODAL CONTROLS
+         *************************************************************************/
+        function switchTab(tabName) {
+            const tabs = ['outdoor', 'indoor', 'ar'];
+            tabs.forEach(t => {
+                const section = document.getElementById(`section-${t}`);
+                const btn = document.getElementById(`tab-${t}`);
+                if (t === tabName) {
+                    section.classList.remove('hidden');
+                    btn.className = "flex-1 lg:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-emerald-600 text-white shadow-md shadow-emerald-600/30";
+                } else {
+                    section.classList.add('hidden');
+                    btn.className = "flex-1 lg:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-300 hover:text-white";
+                }
+            });
+
+            if (tabName === 'outdoor' && outdoorMap) {
+                setTimeout(() => outdoorMap.invalidateSize(), 150);
+            }
+            if (tabName === 'indoor') {
+                calculateIndoorRoute();
+            }
+        }
+
+        function toggleHelpModal() {
+            const modal = document.getElementById('help-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        // Initialize Everything on Window Load
+        window.onload = function() {
+            initOutdoorMap();
+            calculateIndoorRoute();
+            simulateMarkerScan('marker2');
+        };
+    </script>
+</body>
+</html>
